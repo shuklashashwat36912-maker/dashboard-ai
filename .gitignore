@@ -1,6 +1,4 @@
 node_modules/
-.venv/
-__pycache__/
-*.csv
-*.log
+frontend/node_modules/
+backend/node_modules/
 .env
