@@ -1,0 +1,349 @@
+/* App Container */
+.app-container {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg-dark);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Background Pattern - Dynamic based on theme */
+.app-container::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(ellipse 80% 50% at 50% -20%, var(--gradient-start, rgba(99, 102, 241, 0.15)), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, var(--gradient-end, rgba(168, 85, 247, 0.1)), transparent);
+  pointer-events: none;
+  z-index: 0;
+  transition: background 0.5s ease;
+}
+
+.app-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* App Header */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(var(--bg-card-rgb, 17, 17, 24), 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+  gap: 16px;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-icon {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.brand-text {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* App Main */
+.app-main {
+  flex: 1;
+}
+
+/* Quick Access Section */
+.quick-access {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  margin-top: -8px;
+}
+
+.view-eda-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.view-eda-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-2px);
+}
+
+.back-section {
+  padding: 24px;
+  text-align: center;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.back-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Loading State */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  gap: 16px;
+  color: var(--text-secondary);
+  padding: 24px;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============ RESPONSIVE DESIGN ============ */
+
+/* Large Desktop */
+@media (min-width: 1440px) {
+  .header-content {
+    padding: 14px 32px;
+  }
+}
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .header-content {
+    padding: 12px 20px;
+  }
+}
+
+/* Mobile Landscape & Small Tablet */
+@media (max-width: 768px) {
+  .header-content {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+
+  .brand-text {
+    font-size: 1rem;
+  }
+
+  .quick-access {
+    padding: 16px;
+  }
+
+  .view-eda-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 16px 24px;
+  }
+
+  .back-section {
+    padding: 16px;
+  }
+
+  .back-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 20px;
+  }
+}
+
+/* Mobile Portrait */
+@media (max-width: 480px) {
+  .header-content {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .brand-text {
+    font-size: 0.95rem;
+  }
+  
+  .brand-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .quick-access {
+    padding: 12px;
+  }
+
+  .view-eda-btn {
+    padding: 14px 20px;
+    font-size: 0.9rem;
+  }
+
+  .back-section {
+    padding: 12px;
+  }
+
+  .back-btn {
+    padding: 12px 16px;
+    font-size: 0.85rem;
+  }
+  
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 360px) {
+  .header-content {
+    padding: 10px;
+  }
+  
+  .brand-text {
+    font-size: 0.9rem;
+  }
+  
+  .header-brand {
+    gap: 8px;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .view-eda-btn:hover,
+  .back-btn:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  
+  .view-eda-btn:active,
+  .back-btn:active {
+    transform: scale(0.98);
+    background: var(--bg-elevated);
+  }
+  
+  .view-eda-btn,
+  .back-btn {
+    min-height: 48px;
+  }
+}
+
+/* Landscape mode for mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+  .header-content {
+    padding: 8px 16px;
+  }
+  
+  .quick-access {
+    padding: 12px 16px;
+  }
+  
+  .view-eda-btn {
+    padding: 12px 20px;
+  }
+  
+  .back-section {
+    padding: 12px;
+  }
+  
+  .loading-container {
+    min-height: auto;
+    padding: 40px 24px;
+  }
+}
+
+/* Safe area padding for notched devices */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .app-header {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .header-content {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+    border-color: var(--primary);
+  }
+  
+  .view-eda-btn,
+  .back-btn {
+    transition: none;
+  }
+}
+
+/* Print styles */
+@media print {
+  .app-header {
+    display: none;
+  }
+  
+  .app-container::before {
+    display: none;
+  }
+  
+  .quick-access,
+  .back-section {
+    display: none;
+  }
+}
