@@ -1,56 +1,122 @@
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const { parseCSV, parseExcel, parseJSON, analyzeData } = require('../services/parseData');
 const { generateDashboardConfig, generateInsights } = require('../services/gemini');
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
 /**
- * Upload file and generate dashboard
+ * Run the Python EDA script on the uploaded file.
+ * Returns a Promise that resolves to the parsed JSON result.
+ */
+const runPythonEDA = (filePath) => {
+  return new Promise((resolve, reject) => {
+    // Try python3 first, then python
+    const pythonCmds = ['python3', 'python'];
+    const scriptPath = path.join(__dirname, 'eda_runner.py');
+
+    const tryCmd = (cmds) => {
+      if (cmds.length === 0) {
+        return reject(new Error('Python not available on this server'));
+      }
+      const cmd = cmds[0];
+      execFile(cmd, [scriptPath, filePath], { maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+        if (err) {
+          if (err.code === 'ENOENT') {
+            // binary not found, try next
+            return tryCmd(cmds.slice(1));
+          }
+          return reject(new Error(`Python EDA failed: ${stderr || err.message}`));
+        }
+        try {
+          const result = JSON.parse(stdout);
+          resolve(result);
+        } catch (parseErr) {
+          reject(new Error(`Could not parse EDA output: ${stdout.slice(0, 300)}`));
+        }
+      });
+    };
+
+    tryCmd(pythonCmds);
+  });
+};
+
+// ─── controllers ────────────────────────────────────────────────────────────
+
+/**
+ * Upload file, run Python EDA, and optionally enhance with Gemini AI.
  */
 const uploadAndGenerateDashboard = async (req, res) => {
+  let filePath = null;
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const filePath = req.file.path;
+    filePath = req.file.path;
     const fileExt = path.extname(req.file.originalname).toLowerCase();
-    let parseResult;
 
-    // Parse file based on type
-    if (fileExt === '.csv') {
-      parseResult = parseCSV(filePath);
-    } else if (['.xlsx', '.xls'].includes(fileExt)) {
-      parseResult = parseExcel(filePath);
-    } else if (fileExt === '.json') {
-      parseResult = parseJSON(filePath);
-    } else {
+    // Validate extension
+    if (!['.csv', '.xlsx', '.xls', '.json'].includes(fileExt)) {
       fs.unlinkSync(filePath);
       return res.status(400).json({ error: 'Unsupported file type. Use CSV, Excel, or JSON' });
     }
 
+    // ── Step 1: Parse file for row count / basic info ──────────────────
+    let parseResult;
+    if (fileExt === '.csv') {
+      parseResult = parseCSV(filePath);
+    } else if (['.xlsx', '.xls'].includes(fileExt)) {
+      parseResult = parseExcel(filePath);
+    } else {
+      parseResult = parseJSON(filePath);
+    }
     const { data, columns, rowCount } = parseResult;
 
-    // Analyze data
+    // ── Step 2: Run pandas EDA ─────────────────────────────────────────
+    let edaResult = null;
+    let edaError = null;
+    try {
+      edaResult = await runPythonEDA(filePath);
+      if (!edaResult.success) {
+        edaError = edaResult.error;
+        edaResult = null;
+      }
+    } catch (e) {
+      edaError = e.message;
+      console.warn('[EDA] Python EDA unavailable, falling back to JS analysis:', edaError);
+    }
+
+    // ── Step 3: JS-based analysis (always run as backup / supplement) ──
     const analysis = analyzeData(data, columns);
 
-    // Get user prompt if provided
+    // ── Step 4: Generate dashboard config (AI or rule-based) ───────────
     const { prompt } = req.body;
+    let dashboardConfig;
+    let insights;
 
-    // Generate dashboard config using AI
-    const dashboardConfig = await generateDashboardConfig(data, columns, analysis, prompt);
+    if (edaResult) {
+      // Use EDA output directly — charts and metrics are pre-computed
+      dashboardConfig = {
+        dashboardTitle: edaResult.dashboard_title,
+        charts: edaResult.charts,
+        metrics: edaResult.metrics,
+        insights: edaResult.insights.join('\n'),
+      };
+      insights = edaResult.insights.join('\n\n');
+    } else {
+      // Fallback: use Gemini / rule-based JS
+      dashboardConfig = await generateDashboardConfig(data, columns, analysis, prompt);
+      insights = await generateInsights(data, columns, analysis);
+    }
 
-    // Generate insights
-    const insights = await generateInsights(data, columns, analysis);
-
-    // Store data in session/memory (in production, use database)
-    const sessionId = req.sessionID || Date.now().toString();
-
-    // Clean up uploaded file
+    // ── Step 5: Cleanup ────────────────────────────────────────────────
     fs.unlinkSync(filePath);
+    filePath = null;
 
     res.json({
       success: true,
-      sessionId,
       fileInfo: {
         name: req.file.originalname,
         type: fileExt,
@@ -60,46 +126,40 @@ const uploadAndGenerateDashboard = async (req, res) => {
       columns,
       dashboardConfig,
       insights,
-      data: data.slice(0, 100), // Send first 100 rows
+      // Send EDA enriched data so frontend has real stats
+      edaResult: edaResult || null,
+      data: data.slice(0, 200),   // first 200 rows for charts/table
       totalRows: data.length,
     });
   } catch (error) {
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
-    console.error('Error:', error);
+    console.error('[Dashboard] Error:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
 /**
- * Regenerate dashboard with custom prompt
+ * Regenerate dashboard config from already-uploaded data.
  */
 const regenerateDashboard = async (req, res) => {
   try {
-    // In a real app, you'd retrieve the stored data from a session/database
-    // For now, this is a placeholder
     const { data, columns, prompt } = req.body;
-
     if (!data || !columns) {
       return res.status(400).json({ error: 'Data and columns are required' });
     }
-
     const analysis = analyzeData(data, columns);
     const dashboardConfig = await generateDashboardConfig(data, columns, analysis, prompt);
-
-    res.json({
-      success: true,
-      dashboardConfig,
-    });
+    res.json({ success: true, dashboardConfig });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[Regenerate] Error:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
 /**
- * Calculate aggregated metrics with accuracy validation
+ * Calculate aggregated metrics accurately using raw data.
  */
 const calculateMetrics = (req, res) => {
   try {
@@ -108,11 +168,9 @@ const calculateMetrics = (req, res) => {
     if (!data || !metrics) {
       return res.status(400).json({ error: 'Data and metrics are required' });
     }
-
     if (!Array.isArray(data) || data.length === 0) {
       return res.status(400).json({ error: 'Data must be a non-empty array' });
     }
-
     if (!Array.isArray(metrics) || metrics.length === 0) {
       return res.status(400).json({ error: 'Metrics must be a non-empty array' });
     }
@@ -122,15 +180,9 @@ const calculateMetrics = (req, res) => {
     metrics.forEach((metric) => {
       try {
         const { id, column, aggregation } = metric;
-        
-        if (!id || !column || !aggregation) {
-          throw new Error('Each metric must have id, column, and aggregation');
-        }
+        if (!id || !column || !aggregation) throw new Error('Each metric must have id, column, and aggregation');
 
-        // Extract and validate values
         const rawValues = data.map((row) => row[column]);
-        
-        // Filter and convert to numbers
         const numericValues = rawValues
           .map((val) => {
             if (val === null || val === undefined || val === '') return null;
@@ -140,66 +192,52 @@ const calculateMetrics = (req, res) => {
           .filter((v) => v !== null && isFinite(v));
 
         let result = 0;
-        let validCount = numericValues.length;
+        const validCount = numericValues.length;
 
         switch (aggregation.toLowerCase()) {
           case 'sum':
             result = numericValues.reduce((a, b) => a + b, 0);
             break;
-          
           case 'avg':
           case 'average':
           case 'mean':
-            result = validCount > 0 
-              ? parseFloat((numericValues.reduce((a, b) => a + b, 0) / validCount).toFixed(2))
+            result = validCount > 0
+              ? parseFloat((numericValues.reduce((a, b) => a + b, 0) / validCount).toFixed(4))
               : 0;
             break;
-          
           case 'count':
-            result = validCount;
+            result = data.length;
             break;
-          
           case 'max':
           case 'maximum':
             result = validCount > 0 ? Math.max(...numericValues) : 0;
             break;
-          
           case 'min':
           case 'minimum':
             result = validCount > 0 ? Math.min(...numericValues) : 0;
             break;
-          
-          case 'median':
+          case 'median': {
             if (validCount > 0) {
               const sorted = [...numericValues].sort((a, b) => a - b);
-              if (validCount % 2 === 0) {
-                result = (sorted[validCount / 2 - 1] + sorted[validCount / 2]) / 2;
-              } else {
-                result = sorted[Math.floor(validCount / 2)];
-              }
+              result = validCount % 2 === 0
+                ? (sorted[validCount / 2 - 1] + sorted[validCount / 2]) / 2
+                : sorted[Math.floor(validCount / 2)];
             }
             break;
-          
+          }
           case 'stddev':
-          case 'standarddeviation':
+          case 'standarddeviation': {
             if (validCount > 1) {
               const avg = numericValues.reduce((a, b) => a + b, 0) / validCount;
               const variance = numericValues.reduce((sq, n) => sq + Math.pow(n - avg, 2), 0) / validCount;
-              result = parseFloat(Math.sqrt(variance).toFixed(2));
+              result = parseFloat(Math.sqrt(variance).toFixed(4));
             }
             break;
-          
-          case 'range':
-            result = validCount > 0 
-              ? (Math.max(...numericValues) - Math.min(...numericValues))
-              : 0;
-            break;
-          
+          }
           case 'distinct':
           case 'unique':
             result = new Set(numericValues).size;
             break;
-          
           default:
             throw new Error(`Unknown aggregation: ${aggregation}`);
         }
@@ -213,27 +251,16 @@ const calculateMetrics = (req, res) => {
           totalCount: rawValues.length,
         };
       } catch (metricError) {
-        console.error(`Error calculating metric ${metric.id}:`, metricError);
-        results[metric.id] = {
-          value: 0,
-          error: metricError.message,
-        };
+        console.error(`[Metrics] Error for metric ${metric.id}:`, metricError);
+        results[metric.id] = { value: 0, error: metricError.message };
       }
     });
 
-    res.json({ 
-      success: true, 
-      metrics: results,
-      timestamp: new Date().toISOString(),
-    });
+    res.json({ success: true, metrics: results, timestamp: new Date().toISOString() });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[Metrics] Error:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
-module.exports = {
-  uploadAndGenerateDashboard,
-  regenerateDashboard,
-  calculateMetrics,
-};
+module.exports = { uploadAndGenerateDashboard, regenerateDashboard, calculateMetrics };

@@ -278,7 +278,44 @@ textarea:disabled {
 .supported-formats p {
   color: var(--text-muted);
   font-size: 0.85rem;
-  margin: 0;
+  margin: 0 0 14px 0;
+}
+
+/* Pipeline steps */
+.pipeline-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.pipeline-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.pipeline-arrow {
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
 .format-badges {
